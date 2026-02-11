@@ -132,8 +132,8 @@ export const DEITIES = [
     gradient: 'linear-gradient(135deg, #b8860b, #ffd700, #fffacd)',
     categories: ['clarity', 'business', 'shadow', 'renewal', 'creative', 'leadership'],
     premiumOnly: true,
-    image: null,
-    voiceFile: null,
+    image: 'https://rich-mgt.com/wp-content/uploads/2026/02/20260211_1459_Majestic-Amun-Ra-Portrait_simple_compose_01kh7ev1fwe11bsbtbe3hjbmcd.png',
+    voiceFile: 'https://rich-mgt.com/wp-content/uploads/2026/02/Amen_Ra.mp3',
     messages: { clarity: "I am the Hidden One — the force behind all forces. You have sought answers in the visible world, but the deepest truth dwells in what cannot be seen. Look within the silence.", business: "Empires rise and fall, but the invisible hand that shapes destiny endures forever. Align your work with the unseen current, and no force can oppose you.", shadow: "I dwell where light and darkness become one. The shadow you fear is merely my veil. Step through it, and you will find the throne that was always yours.", renewal: "Before the sun, before the moon, before the first breath — I was. And from my hiddenness, all things are renewed. You are being reborn in ways you cannot yet perceive.", creative: "The greatest creation is the one that has not yet been imagined. I am the source of that which has never existed. Channel my essence, and create the impossible.", leadership: "The supreme ruler does not need to be seen to be obeyed. True sovereignty radiates from the invisible center. Lead from the place no one can touch." }
   }
 ];

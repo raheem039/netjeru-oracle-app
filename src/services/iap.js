@@ -1,190 +1,146 @@
 /**
  * In-App Purchase Service
- * Uses cordova-plugin-purchase (StoreKit 2) for iOS IAP
- * Falls back gracefully in browser/dev mode
+ * Uses native StoreKit 2 via custom Capacitor plugin on iOS
+ * Falls back to simulated purchases in browser/dev mode
  */
 
-const PRODUCTS = {
-  PULLS_10: {
-    id: 'com.richmgt.netjeruoracle.pulls10',
-    type: 'consumable',
-    pulls: 10
-  },
-  PULLS_50: {
-    id: 'com.richmgt.netjeruoracle.pulls50',
-    type: 'consumable',
-    pulls: 50
-  },
-  PULLS_100: {
-    id: 'com.richmgt.netjeruoracle.pulls100',
-    type: 'consumable',
-    pulls: 100
-  },
-  SUB_UNLIMITED: {
-    id: 'com.richmgt.netjeruoracle.sub_unlimited',
-    type: 'paid subscription',
-    pulls: Infinity
-  }
+import { registerPlugin, Capacitor } from '@capacitor/core';
+
+const InAppPurchase = registerPlugin('InAppPurchase');
+
+const PRODUCT_IDS = [
+  'com.richmgt.netjeruoracle.pulls10',
+  'com.richmgt.netjeruoracle.pulls50',
+  'com.richmgt.netjeruoracle.pulls100',
+  'com.richmgt.netjeruoracle.sub_unlimited'
+];
+
+const PRODUCT_PULLS = {
+  'com.richmgt.netjeruoracle.pulls10': 10,
+  'com.richmgt.netjeruoracle.pulls50': 50,
+  'com.richmgt.netjeruoracle.pulls100': 100
 };
 
-let store = null;
-let initialized = false;
 let onCreditsCallback = null;
 let onSubscribeCallback = null;
 let onErrorCallback = null;
-
-function getStore() {
-  if (store) return store;
-  if (window.CdvPurchase) {
-    store = window.CdvPurchase.store;
-    return store;
-  }
-  return null;
-}
+let initialized = false;
 
 /**
  * Initialize the IAP store and register products
  */
-export function initializeIAP({ onCredits, onSubscribe, onError }) {
+export async function initializeIAP({ onCredits, onSubscribe, onError }) {
   onCreditsCallback = onCredits;
   onSubscribeCallback = onSubscribe;
   onErrorCallback = onError || console.warn;
 
-  const s = getStore();
-  if (!s) {
-    console.log('IAP: Store not available (running in browser)');
-    return false;
+  if (!Capacitor.isNativePlatform()) {
+    console.log('IAP: Running in browser — purchases will be simulated');
+    initialized = true;
+    return;
   }
 
-  if (initialized) return true;
+  try {
+    // Listen for subscription re-verification on app launch
+    await InAppPurchase.addListener('subscriptionActive', (data) => {
+      if (onSubscribeCallback) onSubscribeCallback();
+    });
 
-  const Platform = window.CdvPurchase.Platform;
-  const ProductType = window.CdvPurchase.ProductType;
-
-  // Register consumable products
-  s.register([
-    {
-      id: PRODUCTS.PULLS_10.id,
-      type: ProductType.CONSUMABLE,
-      platform: Platform.APPLE_APPSTORE
-    },
-    {
-      id: PRODUCTS.PULLS_50.id,
-      type: ProductType.CONSUMABLE,
-      platform: Platform.APPLE_APPSTORE
-    },
-    {
-      id: PRODUCTS.PULLS_100.id,
-      type: ProductType.CONSUMABLE,
-      platform: Platform.APPLE_APPSTORE
-    },
-    {
-      id: PRODUCTS.SUB_UNLIMITED.id,
-      type: ProductType.PAID_SUBSCRIPTION,
-      platform: Platform.APPLE_APPSTORE
-    }
-  ]);
-
-  // Handle approved transactions
-  s.when()
-    .approved(transaction => {
-      // Verify the transaction
-      transaction.verify();
-    })
-    .verified(receipt => {
-      const productId = receipt.productId;
-      const product = Object.values(PRODUCTS).find(p => p.id === productId);
-
-      if (product) {
-        if (product.type === 'paid subscription') {
-          // Activate subscription
-          if (onSubscribeCallback) {
-            onSubscribeCallback();
-          }
-        } else {
-          // Credit pulls for consumable
-          if (onCreditsCallback) {
-            onCreditsCallback(product.pulls);
-          }
-        }
-      }
-
-      // Finish the transaction
-      receipt.finish();
-    })
-    .unverified(receipt => {
-      console.warn('IAP: Unverified receipt', receipt);
-      if (onErrorCallback) {
-        onErrorCallback('Purchase could not be verified. Please try again.');
+    // Listen for background transaction updates (renewals, family sharing, etc.)
+    await InAppPurchase.addListener('transactionUpdate', (data) => {
+      const pulls = PRODUCT_PULLS[data.productId];
+      if (pulls && onCreditsCallback) {
+        onCreditsCallback(pulls);
       }
     });
 
-  // Handle errors
-  s.error(err => {
-    console.warn('IAP Store error:', err);
-    if (onErrorCallback) {
-      onErrorCallback(err.message || 'Purchase failed. Please try again.');
-    }
-  });
+    // Listen for completed purchases triggered by purchase()
+    await InAppPurchase.addListener('purchaseCompleted', (data) => {
+      if (data.type === 'autoRenewable') {
+        if (onSubscribeCallback) onSubscribeCallback();
+      } else {
+        const pulls = PRODUCT_PULLS[data.productId];
+        if (pulls && onCreditsCallback) onCreditsCallback(pulls);
+      }
+    });
 
-  // Initialize the store
-  s.initialize([Platform.APPLE_APPSTORE]);
-
-  initialized = true;
-  return true;
+    // Initialize store with product IDs
+    const result = await InAppPurchase.initialize({ productIds: PRODUCT_IDS });
+    console.log('IAP: Initialized with products:', result.products?.length || 0);
+    initialized = true;
+  } catch (err) {
+    console.warn('IAP: Initialization failed:', err);
+    if (onErrorCallback) onErrorCallback('Store initialization failed');
+  }
 }
 
 /**
  * Purchase a product by its product ID
  */
-export function purchase(productId) {
-  const s = getStore();
-  if (!s) {
-    // Fallback for browser/dev mode — simulate purchase
+export async function purchase(productId) {
+  if (!Capacitor.isNativePlatform()) {
+    // Browser fallback — simulate purchase
     console.log('IAP: Simulating purchase for', productId);
-    const product = Object.values(PRODUCTS).find(p => p.id === productId);
-    if (product) {
-      if (product.type === 'paid subscription') {
-        if (onSubscribeCallback) onSubscribeCallback();
-      } else {
-        if (onCreditsCallback) onCreditsCallback(product.pulls);
-      }
-    }
+    simulatePurchase(productId);
     return;
   }
 
-  const offer = s.get(productId)?.getOffer();
-  if (offer) {
-    s.order(offer);
-  } else {
-    console.warn('IAP: Product not found:', productId);
-    if (onErrorCallback) {
-      onErrorCallback('Product not available. Please try again later.');
+  try {
+    const result = await InAppPurchase.purchase({ productId });
+
+    if (result.cancelled) {
+      console.log('IAP: Purchase cancelled by user');
+      return;
     }
+
+    if (result.pending) {
+      console.log('IAP: Purchase pending (e.g. Ask to Buy)');
+      return;
+    }
+
+    // Success is handled by the purchaseCompleted listener,
+    // but also handle it here for immediate UI feedback
+    if (result.success) {
+      if (result.type === 'autoRenewable') {
+        if (onSubscribeCallback) onSubscribeCallback();
+      } else {
+        const pulls = PRODUCT_PULLS[productId];
+        if (pulls && onCreditsCallback) onCreditsCallback(pulls);
+      }
+    }
+  } catch (err) {
+    console.warn('IAP: Purchase failed:', err);
+    if (onErrorCallback) onErrorCallback(err.message || 'Purchase failed');
   }
 }
 
 /**
  * Restore previous purchases (subscriptions)
  */
-export function restorePurchases() {
-  const s = getStore();
-  if (!s) {
+export async function restorePurchases() {
+  if (!Capacitor.isNativePlatform()) {
     console.log('IAP: Restore not available in browser');
     return;
   }
-  s.restorePurchases();
+
+  try {
+    await InAppPurchase.restorePurchases();
+  } catch (err) {
+    console.warn('IAP: Restore failed:', err);
+    if (onErrorCallback) onErrorCallback(err.message || 'Restore failed');
+  }
 }
 
 /**
- * Check if the subscription is currently active
+ * Browser-only: simulate a purchase for dev/testing
  */
-export function isSubscriptionActive() {
-  const s = getStore();
-  if (!s) return false;
-
-  const product = s.get(PRODUCTS.SUB_UNLIMITED.id);
-  return product?.owned === true;
+function simulatePurchase(productId) {
+  if (productId === 'com.richmgt.netjeruoracle.sub_unlimited') {
+    if (onSubscribeCallback) onSubscribeCallback();
+  } else {
+    const pulls = PRODUCT_PULLS[productId];
+    if (pulls && onCreditsCallback) onCreditsCallback(pulls);
+  }
 }
 
-export { PRODUCTS };
+export { PRODUCT_IDS };
