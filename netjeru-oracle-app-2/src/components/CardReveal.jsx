@@ -1,15 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { RARITY_CONFIG, CARD_BACK_IMAGE } from '../data/deities';
 
 export default function CardReveal({ cards, category, pullType, audio, onBack, onPullAgain, canPull }) {
   const [expandedCard, setExpandedCard] = useState(null);
   const [revealedCards, setRevealedCards] = useState(new Set());
 
+  // Auto-reveal all cards on load
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setRevealedCards(new Set(cards.map((_, i) => i)));
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [cards]);
+
   const handleCardClick = (index) => {
-    setRevealedCards(prev => new Set([...prev, index]));
-    
     if (expandedCard === index) {
       setExpandedCard(null);
+      audio.stopAll();
     } else {
       setExpandedCard(index);
       audio.playSingle(cards[index]);
@@ -17,17 +24,16 @@ export default function CardReveal({ cards, category, pullType, audio, onBack, o
   };
 
   const handlePlayAll = () => {
-    setRevealedCards(new Set(cards.map((_, i) => i)));
     audio.playSequence(cards);
   };
 
   return (
     <div className="screen screen-reveal">
       <h2 className="reveal-title">Your Reading</h2>
-      <p className="reveal-subtitle">Tap each card to reveal and hear the deity speak</p>
+      <p className="reveal-subtitle">Tap a card to expand and hear the deity speak</p>
 
       <button className="btn-play-all" onClick={handlePlayAll}>
-        {audio.isPlaying ? '⏸ Playing...' : '🔊 Reveal All & Hear Voices'}
+        {audio.isPlaying ? '⏸ Playing...' : '🔊 Hear All Voices'}
       </button>
 
       {audio.isPlaying && audio.currentDeity && (
@@ -77,7 +83,7 @@ export default function CardReveal({ cards, category, pullType, audio, onBack, o
                         loading="lazy"
                       />
                     </div>
-                    <span className="card-tap-hint">TAP TO REVEAL</span>
+                    <span className="card-tap-hint">REVEALING...</span>
                   </div>
                 ) : (
                   <div className="card-front">
