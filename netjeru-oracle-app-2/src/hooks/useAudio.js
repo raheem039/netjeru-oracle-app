@@ -45,8 +45,7 @@ export function useAudio() {
 
     // voiceFile is now a full WordPress URL
     const audio = new Audio(next.voiceFile);
-    audio.crossOrigin = 'anonymous';
-    audioRef.current = audio;
+       audioRef.current = audio;
 
     if (intervalRef.current) clearInterval(intervalRef.current);
     intervalRef.current = setInterval(() => {
