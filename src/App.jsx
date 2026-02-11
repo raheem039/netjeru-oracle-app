@@ -1,8 +1,9 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useGameState } from './hooks/useGameState';
 import { useAudio } from './hooks/useAudio';
 import { generateReading } from './engine/oracle';
 import { CATEGORIES, PULL_TYPES, TOTAL_DEITIES, RARITY_CONFIG } from './data/deities';
+import { initializeIAP } from './services/iap';
 import Paywall from './components/Paywall';
 import CardReveal from './components/CardReveal';
 import Collection from './components/Collection';
@@ -25,6 +26,15 @@ export default function App() {
 
   const gameState = useGameState();
   const audio = useAudio();
+
+  // Initialize IAP store on mount
+  useEffect(() => {
+    initializeIAP({
+      onCredits: (amount) => gameState.addCredits(amount),
+      onSubscribe: () => gameState.activateSubscription(),
+      onError: (msg) => console.warn('IAP Error:', msg)
+    });
+  }, []);
 
   const discoveredCount = Object.keys(gameState.discovered).length;
 

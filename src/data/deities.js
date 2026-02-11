@@ -169,15 +169,15 @@ export const POSITION_NAMES = {
 export const TOTAL_DEITIES = 14;
 
 export const CREDIT_PACKS = [
-  { id: 'pack_10', pulls: 10, price: 0.99, label: '10 Pulls', badge: '', bonus: null, stripeLink: '#' },
-  { id: 'pack_50', pulls: 50, price: 2.99, label: '50 Pulls', badge: 'POPULAR', bonus: 'Guaranteed Epic', stripeLink: '#' },
-  { id: 'pack_100', pulls: 100, price: 4.99, label: '100 Pulls', badge: 'BEST VALUE', bonus: 'Guaranteed Legendary', stripeLink: '#' }
+  { id: 'pack_10', pulls: 10, price: 0.99, label: '10 Pulls', badge: '', bonus: null, productId: 'com.richmgt.netjeruoracle.pulls10' },
+  { id: 'pack_50', pulls: 50, price: 2.99, label: '50 Pulls', badge: 'POPULAR', bonus: 'Guaranteed Epic', productId: 'com.richmgt.netjeruoracle.pulls50' },
+  { id: 'pack_100', pulls: 100, price: 4.99, label: '100 Pulls', badge: 'BEST VALUE', bonus: 'Guaranteed Legendary', productId: 'com.richmgt.netjeruoracle.pulls100' }
 ];
 
 export const SUBSCRIPTION = {
   price: 9.99,
   label: 'Unlimited Monthly',
-  stripeLink: '#',
+  productId: 'com.richmgt.netjeruoracle.sub_unlimited',
   features: [
     'Unlimited pulls every month',
     'Permanent card collection',

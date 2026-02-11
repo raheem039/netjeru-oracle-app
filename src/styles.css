@@ -1131,6 +1131,32 @@ body {
   margin-top: 16px;
 }
 
+.btn-restore {
+  display: block;
+  width: 100%;
+  margin-top: 16px;
+  padding: 12px;
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 2px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.btn-restore:hover {
+  color: var(--text-secondary);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.credit-card.purchasing,
+.sub-card.purchasing {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
 .paywall-terms {
   text-align: center;
   margin-top: 16px;

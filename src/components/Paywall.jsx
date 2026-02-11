@@ -1,7 +1,21 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { CREDIT_PACKS, SUBSCRIPTION } from '../data/deities';
+import { purchase, restorePurchases } from '../services/iap';
 
 export default function Paywall({ credits, freeRoundsRemaining, onBack, onAddCredits, onSubscribe }) {
+  const [purchasing, setPurchasing] = useState(null);
+
+  const handlePurchase = (productId) => {
+    setPurchasing(productId);
+    purchase(productId);
+    // Reset after a delay (the IAP callbacks handle crediting)
+    setTimeout(() => setPurchasing(null), 3000);
+  };
+
+  const handleRestore = () => {
+    restorePurchases();
+  };
+
   return (
     <div className="screen screen-paywall">
       <div className="paywall-header">
@@ -24,7 +38,12 @@ export default function Paywall({ credits, freeRoundsRemaining, onBack, onAddCre
       {/* Subscription Option */}
       <div className="paywall-section">
         <h3 className="paywall-section-title">👑 UNLIMITED ACCESS</h3>
-        <div className="sub-card" onClick={onSubscribe} role="button" tabIndex={0}>
+        <div
+          className={`sub-card ${purchasing === SUBSCRIPTION.productId ? 'purchasing' : ''}`}
+          onClick={() => handlePurchase(SUBSCRIPTION.productId)}
+          role="button"
+          tabIndex={0}
+        >
           <div className="sub-badge">BEST FOR SEEKERS</div>
           <div className="sub-price">
             <span className="sub-amount">${SUBSCRIPTION.price}</span>
@@ -35,7 +54,9 @@ export default function Paywall({ credits, freeRoundsRemaining, onBack, onAddCre
               <li key={i}>✦ {f}</li>
             ))}
           </ul>
-          <div className="sub-cta">SUBSCRIBE NOW →</div>
+          <div className="sub-cta">
+            {purchasing === SUBSCRIPTION.productId ? 'PROCESSING...' : 'SUBSCRIBE NOW →'}
+          </div>
         </div>
       </div>
 
@@ -51,8 +72,8 @@ export default function Paywall({ credits, freeRoundsRemaining, onBack, onAddCre
           {CREDIT_PACKS.map(pack => (
             <div
               key={pack.id}
-              className="credit-card"
-              onClick={() => onAddCredits(pack.pulls)}
+              className={`credit-card ${purchasing === pack.productId ? 'purchasing' : ''}`}
+              onClick={() => handlePurchase(pack.productId)}
               role="button"
               tabIndex={0}
             >
@@ -62,7 +83,9 @@ export default function Paywall({ credits, freeRoundsRemaining, onBack, onAddCre
               {pack.bonus && (
                 <div className="credit-bonus">+ {pack.bonus}</div>
               )}
-              <div className="credit-price">${pack.price}</div>
+              <div className="credit-price">
+                {purchasing === pack.productId ? '...' : `$${pack.price}`}
+              </div>
               <div className="credit-per">
                 ${(pack.price / pack.pulls).toFixed(2)}/pull
               </div>
@@ -78,10 +101,16 @@ export default function Paywall({ credits, freeRoundsRemaining, onBack, onAddCre
         </div>
       )}
 
+      {/* Restore Purchases */}
+      <button className="btn-restore" onClick={handleRestore}>
+        Restore Purchases
+      </button>
+
       {/* Terms */}
       <div className="paywall-terms">
-        <p>Credits are in-app purchases only. Non-transferable. Non-redeemable for cash.</p>
-        <p>Can only be used for oracle card pulls within this application.</p>
+        <p>Payment will be charged to your Apple ID account at confirmation of purchase.</p>
+        <p>Subscription automatically renews unless cancelled at least 24 hours before the end of the current period.</p>
+        <p>Credits are non-transferable and non-redeemable for cash.</p>
       </div>
 
       <button className="btn-back-paywall" onClick={onBack}>
