@@ -1,122 +1,126 @@
-/**
- * In-App Purchase Service
- * Uses native StoreKit 2 via custom Capacitor plugin on iOS
- * Falls back to simulated purchases in browser/dev mode
- */
+import { Capacitor } from '@capacitor/core';
+import { Purchases } from '@revenuecat/purchases-capacitor';
 
-import { registerPlugin, Capacitor } from '@capacitor/core';
-
-const InAppPurchase = registerPlugin('InAppPurchase');
-
-const PRODUCT_IDS = [
-  'com.richmgt.netjeruoracle.pulls10',
-  'com.richmgt.netjeruoracle.pulls50',
-  'com.richmgt.netjeruoracle.pulls100',
-  'com.richmgt.netjeruoracle.sub_unlimited'
-];
-
-const PRODUCT_PULLS = {
-  'com.richmgt.netjeruoracle.pulls10': 10,
-  'com.richmgt.netjeruoracle.pulls50': 50,
-  'com.richmgt.netjeruoracle.pulls100': 100
+// ============================================
+// PRODUCT IDs — matched to App Store Connect
+// ============================================
+export const PRODUCT_IDS = {
+  SUBSCRIPTION: 'com.richmanagement.netjeru.premium.monthly',
+  CREDITS_10:   'com.richmanagement.netjeru.credits.10',
+  CREDITS_50:   'com.richmanagement.netjeru.credits.50',
+  CREDITS_100:  'com.richmanagement.netjeru.credits.100',
 };
 
-let onCreditsCallback = null;
-let onSubscribeCallback = null;
-let onErrorCallback = null;
-let initialized = false;
+// Pulls per credit pack
+const PRODUCT_PULLS = {
+  [PRODUCT_IDS.CREDITS_10]:  10,
+  [PRODUCT_IDS.CREDITS_50]:  50,
+  [PRODUCT_IDS.CREDITS_100]: 100,
+};
 
-/**
- * Initialize the IAP store and register products
- */
-export async function initializeIAP({ onCredits, onSubscribe, onError }) {
-  onCreditsCallback = onCredits;
+// Callbacks set by the app
+let onSubscribeCallback = null;
+let onCreditsCallback   = null;
+let onErrorCallback     = null;
+
+// ============================================
+// INITIALIZE — call once on app startup
+// ============================================
+export async function initializeIAP({ onSubscribe, onCredits, onError } = {}) {
   onSubscribeCallback = onSubscribe;
-  onErrorCallback = onError || console.warn;
+  onCreditsCallback   = onCredits;
+  onErrorCallback     = onError;
 
   if (!Capacitor.isNativePlatform()) {
-    console.log('IAP: Running in browser — purchases will be simulated');
-    initialized = true;
+    console.log('IAP: Running in browser — sandbox mode active');
     return;
   }
 
   try {
-    // Listen for subscription re-verification on app launch
-    await InAppPurchase.addListener('subscriptionActive', (data) => {
-      if (onSubscribeCallback) onSubscribeCallback();
-    });
+    // RevenueCat is configured natively in AppDelegate.swift
+    console.log('IAP: RevenueCat configured natively ✅');
 
-    // Listen for background transaction updates (renewals, family sharing, etc.)
-    await InAppPurchase.addListener('transactionUpdate', (data) => {
-      const pulls = PRODUCT_PULLS[data.productId];
-      if (pulls && onCreditsCallback) {
-        onCreditsCallback(pulls);
-      }
-    });
-
-    // Listen for completed purchases triggered by purchase()
-    await InAppPurchase.addListener('purchaseCompleted', (data) => {
-      if (data.type === 'autoRenewable') {
-        if (onSubscribeCallback) onSubscribeCallback();
-      } else {
-        const pulls = PRODUCT_PULLS[data.productId];
-        if (pulls && onCreditsCallback) onCreditsCallback(pulls);
-      }
-    });
-
-    // Initialize store with product IDs
-    const result = await InAppPurchase.initialize({ productIds: PRODUCT_IDS });
-    console.log('IAP: Initialized with products:', result.products?.length || 0);
-    initialized = true;
+    // Check existing subscription on launch
+    await checkSubscriptionStatus();
   } catch (err) {
-    console.warn('IAP: Initialization failed:', err);
-    if (onErrorCallback) onErrorCallback('Store initialization failed');
+    console.error('IAP: Init failed:', err);
+    if (onErrorCallback) onErrorCallback('Failed to initialize purchases');
   }
 }
 
-/**
- * Purchase a product by its product ID
- */
+// ============================================
+// CHECK SUBSCRIPTION STATUS
+// Call on every app launch to restore access
+// ============================================
+export async function checkSubscriptionStatus() {
+  if (!Capacitor.isNativePlatform()) return false;
+
+  try {
+    const { customerInfo } = await Purchases.getCustomerInfo();
+    const isActive = customerInfo.entitlements.active['Netjeru Oracle Pro'] !== undefined;
+
+    if (isActive && onSubscribeCallback) {
+      onSubscribeCallback();
+    }
+
+    return isActive;
+  } catch (err) {
+    console.warn('IAP: Could not check subscription status:', err);
+    return false;
+  }
+}
+
+// ============================================
+// PURCHASE — handles both subscription + packs
+// ============================================
 export async function purchase(productId) {
   if (!Capacitor.isNativePlatform()) {
-    // Browser fallback — simulate purchase
-    console.log('IAP: Simulating purchase for', productId);
+    console.log('IAP: Simulating purchase in browser:', productId);
     simulatePurchase(productId);
     return;
   }
 
   try {
-    const result = await InAppPurchase.purchase({ productId });
+    const { offerings } = await Purchases.getOfferings();
 
-    if (result.cancelled) {
-      console.log('IAP: Purchase cancelled by user');
-      return;
-    }
+    if (productId === PRODUCT_IDS.SUBSCRIPTION) {
+      // Subscription purchase via RevenueCat offering
+      const offering = offerings.current;
+      if (!offering) throw new Error('No offering available');
 
-    if (result.pending) {
-      console.log('IAP: Purchase pending (e.g. Ask to Buy)');
-      return;
-    }
+      const pkg = offering.monthly;
+      if (!pkg) throw new Error('Monthly package not found');
 
-    // Success is handled by the purchaseCompleted listener,
-    // but also handle it here for immediate UI feedback
-    if (result.success) {
-      if (result.type === 'autoRenewable') {
-        if (onSubscribeCallback) onSubscribeCallback();
-      } else {
-        const pulls = PRODUCT_PULLS[productId];
-        if (pulls && onCreditsCallback) onCreditsCallback(pulls);
+      const { customerInfo } = await Purchases.purchasePackage({ aPackage: pkg });
+      const isActive = customerInfo.entitlements.active['Netjeru Oracle Pro'] !== undefined;
+
+      if (isActive && onSubscribeCallback) {
+        onSubscribeCallback();
+      }
+    } else {
+      // Credit pack — one-time purchase
+      const { customerInfo } = await Purchases.purchaseStoreProduct({
+        product: { productIdentifier: productId }
+      });
+
+      const pulls = PRODUCT_PULLS[productId];
+      if (pulls && onCreditsCallback) {
+        onCreditsCallback(pulls);
       }
     }
   } catch (err) {
-    console.warn('IAP: Purchase failed:', err);
+    if (err.code === 'PURCHASE_CANCELLED') {
+      console.log('IAP: User cancelled purchase');
+      return;
+    }
+    console.error('IAP: Purchase failed:', err);
     if (onErrorCallback) onErrorCallback(err.message || 'Purchase failed');
   }
 }
 
-/**
- * Restore previous purchases (subscriptions)
- */
+// ============================================
+// RESTORE PURCHASES
+// ============================================
 export async function restorePurchases() {
   if (!Capacitor.isNativePlatform()) {
     console.log('IAP: Restore not available in browser');
@@ -124,23 +128,32 @@ export async function restorePurchases() {
   }
 
   try {
-    await InAppPurchase.restorePurchases();
+    const { customerInfo } = await Purchases.restorePurchases();
+    const isActive = customerInfo.entitlements.active['Netjeru Oracle Pro'] !== undefined;
+
+    if (isActive && onSubscribeCallback) {
+      onSubscribeCallback();
+      console.log('IAP: Subscription restored ✅');
+    } else {
+      if (onErrorCallback) onErrorCallback('No active subscription found to restore');
+    }
   } catch (err) {
     console.warn('IAP: Restore failed:', err);
     if (onErrorCallback) onErrorCallback(err.message || 'Restore failed');
   }
 }
 
-/**
- * Browser-only: simulate a purchase for dev/testing
- */
+// ============================================
+// BROWSER SIMULATOR — dev/testing only
+// ============================================
 function simulatePurchase(productId) {
-  if (productId === 'com.richmgt.netjeruoracle.sub_unlimited') {
-    if (onSubscribeCallback) onSubscribeCallback();
-  } else {
-    const pulls = PRODUCT_PULLS[productId];
-    if (pulls && onCreditsCallback) onCreditsCallback(pulls);
-  }
+  console.log('🧪 Simulating purchase:', productId);
+  setTimeout(() => {
+    if (productId === PRODUCT_IDS.SUBSCRIPTION) {
+      if (onSubscribeCallback) onSubscribeCallback();
+    } else {
+      const pulls = PRODUCT_PULLS[productId];
+      if (pulls && onCreditsCallback) onCreditsCallback(pulls);
+    }
+  }, 1000);
 }
-
-export { PRODUCT_IDS };
